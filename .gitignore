@@ -13,3 +13,7 @@
 
 # Generated files.
 *.npy
+
+# Data
+examples/mnist/MNIST_data/
+

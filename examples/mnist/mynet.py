@@ -1,3 +1,6 @@
+import sys
+sys.path.append('../..')
+
 from kaffe.tensorflow import Network
 
 class LeNet(Network):

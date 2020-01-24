@@ -15,9 +15,20 @@ The above command will generate a weight file named `mynet.npy`.
 
 #### Inference:
 
+`cd examples/mnist`
+
+Make sure `mynet.py` has 
+
+```
+import sys
+sys.path.append('../..')
+```
+
+at the top of it. Then:
+
 Once you have generated both the code weight files for LeNet, you can finetune LeNet using tensorflow with
 
-    $ ./examples/mnist/finetune_mnist.py
+    $ python finetune_mnist.py
 
 At a high level, `finetune_mnist.py` works as follows:
 
