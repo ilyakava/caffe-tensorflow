@@ -15,6 +15,7 @@ def get_filter_output_shape(i_h, i_w, params, round_func):
 def get_strided_kernel_output_shape(node, round_func):
     assert node.layer is not None
     input_shape = node.get_only_parent().output_shape
+    node.layer.set_input_shape(input_shape)
     o_h, o_w = get_filter_output_shape(input_shape.height, input_shape.width,
                                        node.layer.kernel_parameters, round_func)
     params = node.layer.parameters
