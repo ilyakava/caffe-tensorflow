@@ -1,16 +1,18 @@
 # [Demo_DFFN Example](https://github.com/weiweisong415/Demo_DFFN)
 
+## Regenerating models
+
 This code works in the [onnx docker container](https://github.com/onnx/tutorials/blob/master/pytorch_caffe2_docker.md):
 
 `docker run -it --rm onnx/onnx-docker:cpu /bin/bash`
 
 Clone this repo and then run:
 
-`python convert.py examples/Demo_DFFN/train_indian_pines.prototxt --code-output-path=./train_indian_pines.py &> ./train_indian_pines.log`
+`python convert.py examples/Demo_DFFN/models/train_indian_pines.prototxt --code-output-path=examples/Demo_DFFN/models/train_indian_pines.py &> examples/Demo_DFFN/models/train_indian_pines.log`
 
 Copy out of the docker container with:
 
-`docker cp e12114an7ebh:/root/programs/caffe-tensorflow/train_indian_pines.* ./`
+`docker cp e12114an7ebh:/root/programs/caffe-tensorflow/examples/Demo_DFFN/models/* ./`
 
 where the hash is the container id from `docker ps`
 
