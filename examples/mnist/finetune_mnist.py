@@ -6,8 +6,10 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 from mynet import LeNet as MyNet
 
+import pdb
+
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
-batch_size = 32
+batch_size = 1024
 
 def gen_data(source):
     while True:
@@ -44,7 +46,8 @@ train_op = opt.minimize(loss)
 with tf.Session() as sess:
     # Load the data
     sess.run(tf.initialize_all_variables())
-    net.load('mynet.npy', sess)
+    # uncomment to load the network
+    # net.load('mynet.npy', sess)
 
     data_gen = gen_data_batch(mnist.train)
     for i in range(1000):
@@ -52,5 +55,7 @@ with tf.Session() as sess:
         feed = {images: np_images, labels: np_labels}
 
         np_loss, np_pred, _ = sess.run([loss, pred, train_op], feed_dict=feed)
+        acc = 100* (np_pred.argmax(axis=1) == np_labels.argmax(axis=1)).sum() / float(batch_size)
+        
         if i % 10 == 0:
-            print('Iteration: ', i, np_loss)
+            print('Iteration: %i. Loss: %.4f, Accuracy: %.2f' % (i, np_loss, acc) )
