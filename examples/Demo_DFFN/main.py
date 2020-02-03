@@ -2,6 +2,7 @@
 """
 
 import os
+import random
 
 import argparse
 import numpy as np
@@ -21,26 +22,47 @@ network_dict = {
     'IP': DFFN_indian_pines
 }
 
+def make_one_hot(indices, n_classes):
+    n_examples = indices.shape[0]
+    indices = np.random.randint(0,n_classes,(n_examples,))
+    one_hot = np.zeros((indices.size, indices.max()+1))
+    one_hot[np.arange(indices.size),indices] = 1
+    return one_hot
+
 def train(args):
     bs = args.batch_size
-    
-    def network(x_dict):
-        net = network_dict[args.dataset](x_dict)
-        return net.layers['InnerProduct1']
-        
     n_classes = nclass_dict[args.dataset]
     trainimgname, trainlabelname = dset_filenames_dict[args.dataset]
     trainimgfield, trainlabelfield = dset_fieldnames_dict[args.dataset]
     
+    
+    # tf ops
+    images = tf.placeholder(tf.float32, [bs, 25, 25, 3])
+    labels = tf.placeholder(tf.float32, [bs, n_classes])
+    net = DFFN_indian_pines({'data': images})
+    logits = net.layers['InnerProduct1']
+    
+    pred_classes = tf.argmax(logits, axis=1)
+    
+    loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+            logits=logits, labels=labels), 0)
+            
+    optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=0.9)
+    # optimizer = tf.train.RMSPropOptimizer(learning_rate)
+    train_op = optimizer.minimize(loss_op) # ,global_step=tf.train.get_global_step()
+
+    # acc_op = tf.metrics.accuracy(labels=tf.argmax(labels, axis=1), predictions=pred_classes)
+    # end of tf ops
+        
     train_mask = multiversion_matfile_get_field(args.mask_root, 'train_mask')
     val_mask = multiversion_matfile_get_field(args.mask_root, 'test_mask')
     
-    data, labels = load_data(trainimgname, trainimgfield, trainlabelname, trainlabelfield)
+    data, labels_ = load_data(trainimgname, trainimgfield, trainlabelname, trainlabelfield)
     
     data = pca_embedding(data, n_components=args.network_spectral_size)
             
     s = args.network_spatial_size - 1
-    trainX, trainY, valX, valY = get_train_val_splits(data, labels, train_mask, val_mask, (s,s,0), n_eval=args.n_eval)
+    trainX, trainY, valX, valY = get_train_val_splits(data, labels_, train_mask, val_mask, (s,s,0), n_eval=args.n_eval)
     
     best_loss = float("inf")
     best_acc = 0
@@ -49,61 +71,68 @@ def train(args):
     steps_per_epoch = train_set_size // bs
     max_steps = args.num_epochs * steps_per_epoch
     
-    def model_fn(features, labels, mode):
-        logits_train = network(features)
-        logits_val = network(features)
+    trainY = make_one_hot(trainY, n_classes)
+    valY = make_one_hot(valY, n_classes)
     
-        # Predictions
-        pred_classes = tf.argmax(logits_val, axis=1)
-        pred_probas = tf.nn.softmax(logits_val)
-    
-        # If prediction mode, early return
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            return tf.estimator.EstimatorSpec(mode, predictions=pred_classes)
-    
-            # Define loss and optimizer
-        loss_op = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=logits_train, labels=tf.cast(labels, dtype=tf.int32)))
-        
-        # could also try tensorflow addons
-        optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=0.9)
-        train_op = optimizer.minimize(loss_op,
-                                      global_step=tf.train.get_global_step())
-    
-        # Evaluate the accuracy of the model
-        acc_op = tf.metrics.accuracy(labels=labels, predictions=pred_classes)
-    
-        # tf.summary.scalar('min', loss_op)
-    
-        # TF Estimators requires to return a EstimatorSpec, that specify
-        # the different ops for training, evaluating, ...
-        estim_specs = tf.estimator.EstimatorSpec(
-            mode=mode,
-            predictions=pred_classes,
-            loss=loss_op,
-            train_op=train_op,
-            eval_metric_ops={'accuracy': acc_op})
-    
-        return estim_specs
-    
-    model = tf.estimator.Estimator(model_fn, model_dir=args.model_root)
-    
-    train_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={'data': trainX[:,:,:,:]}, y=trainY[:],
-        batch_size=bs, num_epochs=args.eval_period, shuffle=True)
-    
-    eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={'data': valX[:args.n_eval,:,:,:]}, y=valY[:args.n_eval],
-        batch_size=bs, shuffle=False)
-    
-    for i in range(args.num_epochs // args.eval_period):
-        model.train(train_input_fn)
+    train_idxs = np.arange(trainX.shape[0])
+    itr_per_epoch = len(train_idxs) // bs
 
-        e = model.evaluate(eval_input_fn)
+    with tf.Session() as sess:
+        sess.run(tf.initialize_all_variables())
         
-        best_loss = min(best_loss, e['loss'])
-        best_acc = max(best_acc, e['accuracy'])
-        print("{:06d}: Validation Accuracy: {:.4f} (Best: {:.4f})".format(i*args.eval_period, e['accuracy'], best_acc))
+        eval_loss = 0
+        eval_acc = 0
+        for j in range(valX.shape[0] // bs):
+            labs = valY[(j*bs):((j+1)*bs)]
+            feed = {images: valX[(j*bs):((j+1)*bs)], labels: labs }
+            np_loss, np_pred = sess.run([loss_op, pred_classes], feed_dict=feed)
+            eval_loss += np_loss / itr_per_epoch
+            acc = 100* (np_pred == labs.argmax(axis=1)).sum() / float(bs)
+            eval_acc += acc / (valX.shape[0] // bs)
+        print("{:06d}: Train Loss: {:.4f}. Eval Loss: {:.4f}. Val Acc: {:.4f} (Best: {:.4f})".format(0, 0, eval_loss, eval_acc, 0))
+        
+        net.load('/scratch0/ilya/locDownloads/indian_pines2.npy', sess)
+        eval_loss = 0
+        eval_acc = 0
+        for j in range(valX.shape[0] // bs):
+            labs = valY[(j*bs):((j+1)*bs)]
+            feed = {images: valX[(j*bs):((j+1)*bs)], labels: labs }
+            np_loss, np_pred = sess.run([loss_op, pred_classes], feed_dict=feed)
+            eval_loss += np_loss / itr_per_epoch
+            acc = 100* (np_pred == labs.argmax(axis=1)).sum() / float(bs)
+            eval_acc += acc / (valX.shape[0] // bs)
+            
+        print("{:06d}: Train Loss: {:.4f}. Eval Loss: {:.4f}. Val Acc: {:.4f} (Best: {:.4f})".format(0, 0, eval_loss, eval_acc, 0))
+        
+        # for i in range(args.num_epochs):
+        #     random.shuffle(train_idxs)
+        #     train_loss = 0
+        #     train_acc = 0
+        #     eval_loss = 0
+        #     eval_acc = 0
+            
+        #     for j in range(itr_per_epoch):
+        #         labs = trainY[ train_idxs[(j*bs):((j+1)*bs)] ]
+        #         feed = {images: trainX[ train_idxs[(j*bs):((j+1)*bs)] ], labels: labs }
+        #         np_loss, np_pred, _ = sess.run([loss_op, pred_classes, train_op], feed_dict=feed)
+        #         train_loss += np_loss / itr_per_epoch
+        #         acc = 100* (np_pred == labs.argmax(axis=1)).sum() / float(bs)
+        #         train_acc += acc / itr_per_epoch
+                
+        #     # eval
+        #     if i % args.eval_period == 0:
+        #         for j in range(valX.shape[0] // bs):
+        #             labs = valY[(j*bs):((j+1)*bs)]
+        #             feed = {images: valX[(j*bs):((j+1)*bs)], labels: labs }
+        #             np_loss, np_pred = sess.run([loss_op, pred_classes], feed_dict=feed)
+        #             eval_loss += np_loss / itr_per_epoch
+        #             acc = 100* (np_pred == labs.argmax(axis=1)).sum() / float(bs)
+        #             eval_acc += acc / (valX.shape[0] // bs)
+                
+            
+        #         best_loss = min(best_loss, train_loss)
+        #         best_acc = max(best_acc, eval_acc)
+        #         print("{:06d}: Train Loss: {:.4f}. Eval Loss: {:.4f}. Val Acc: {:.4f} (Best: {:.4f})".format(i, train_loss, eval_loss, eval_acc, best_acc))
         
 def main():
     parser = argparse.ArgumentParser(

@@ -13,6 +13,8 @@ import scipy.io as sio
 from sklearn.decomposition import PCA
 from tqdm import tqdm
 
+import pdb
+
 DATASET_PATH = '/scratch0/ilya/locDoc/data/hyperspec/datasets'
 PAD_TYPE = 'symmetric'
 
@@ -138,5 +140,6 @@ def pca_embedding(data, n_components=3):
     pca.fit(data.reshape((-1,b)))
     print("First %i components of PCA explain %.2f Percent of the energy." % (n_components, pca.explained_variance_ratio_.sum()*100))
     pc = pca.transform(data.reshape((-1,b)))
-    return pc.reshape((h,w,n_components))
+    norm_pc = (pc - pc.min(axis=0)) / (pc.max(axis=0) - pc.min(axis=0))
+    return norm_pc.reshape((h,w,n_components))
     
