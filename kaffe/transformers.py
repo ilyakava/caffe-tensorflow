@@ -240,6 +240,7 @@ class BatchNormPreprocessor(object):
             # Prescale the stats
             scaling_factor = 1.0 / scale if scale != 0 else 0
             mean *= scaling_factor
+            variance = variance.reshape(mean.shape)
             variance *= scaling_factor
             # Replace with the updated values
             node.data = [mean, variance]

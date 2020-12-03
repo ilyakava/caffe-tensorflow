@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 
+import pdb
+
 DEFAULT_PADDING = 'SAME'
 
 
@@ -62,7 +64,10 @@ class Network(object):
                 for param_name, data in data_dict[op_name].iteritems():
                     try:
                         var = tf.get_variable(param_name)
-                        session.run(var.assign(data))
+                        try:
+                            session.run(var.assign(data))
+                        except:
+                            session.run(var.assign(data.squeeze()))
                     except ValueError:
                         if not ignore_missing:
                             raise
@@ -224,6 +229,9 @@ class Network(object):
                 offset = self.make_var('offset', shape=shape)
             else:
                 scale, offset = (None, None)
+            # output = tf.layers.batch_normalization(
+            #     input,
+            #     name=name)
             output = tf.nn.batch_normalization(
                 input,
                 mean=self.make_var('mean', shape=shape),
